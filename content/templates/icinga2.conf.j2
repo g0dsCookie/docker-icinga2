@@ -1,0 +1,66 @@
+{% set nodename = node.name | default(env("HOSTNAME"), true) -%}
+
+const PluginDir = "/usr/lib/nagios/plugins"
+const ManubulonPluginDir = "/usr/lib/nagios/plugins"
+const PluginContribDir = "/usr/lib/nagios/plugins"
+const NodeName = "{{ nodename }}"
+const ZoneName = NodeName
+{% if ticketsalt is defined and ticketsalt|length -%}
+const TicketSalt = "{{ ticketsalt }}"
+{%- endif %}
+
+{% for endpoint in ([{"name": nodename}] + endpoints|default([])) -%}
+object Endpoint "{{ endpoint.name }}" {
+{%- if endpoint.host is defined and endpoint.host|length %}
+    host = "{{ endpoint.host }}"
+    port = "{{ endpoint.port | default(5665) }}"
+{%- endif %}
+}
+{% endfor %}
+
+{% for zone in (([{"name": nodename, "endpoints": [nodename], "parent": (node.parent | default(""))}] if node.zone else []) + zones|default([])) -%}
+object Zone "{{ zone.name }}" {
+    {%- if zone.global|default(false) %}
+    global = true
+    {%- endif %}
+    {%- if zone.endpoints is defined and zone.endpoints|length %}
+    endpoints = ["{{ zone.endpoints | join('", "') }}"]
+    {%- endif %}
+    {%- if (zone.parent|default(""))|length %}
+    parent = "{{ zone.parent }}"
+    {%- endif %}
+}
+{% endfor %}
+
+object ApiListener "api" {
+    {%- if ticketsalt is defined and ticketsalt|length %}
+    ticket_salt = TicketSalt
+    {%- endif %}
+    {%- if (api|default({})).listen is defined and api.listen|length %}
+    bind_host = "{{ api.listen }}"
+    bind_port = "{{ api.port | default(5665, true) }}"
+    {%- endif %}
+    accept_config = {{ (api|default({})).accept_config | default(false) | lower }}
+    accept_commands = {{ (api|default({})).accept_commands | default(false) | lower }}
+}
+{% for user in (api|default({})).users|default([]) -%}
+object ApiUser "{{ user.name }}" {
+    password = "{{ user.password }}"
+    permissions = [ "{{ user.permissions | join('", "') }}" ]
+}
+{% endfor %}
+
+{% for name, options in (features|default({})).items() -%}
+object {{ options.type }} "{{ name }}" {
+    {%- for setting, value in options.items() if setting != "type" %}
+    {{ setting }} = {% if value is boolean %}{{ value|lower }}{% else %}"{{ value }}"{% endif %}
+    {%- endfor %}
+}
+{% endfor %}
+
+include <itl>
+include <plugins>
+include <plugins-contrib>
+include <manubulon>
+include <windows-plugins>
+include <nscp>
