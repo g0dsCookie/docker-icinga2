@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -eu
+
 get_type() {
     [[ -z "${CONFIG:-}" ]] || return
     declare -g CONFIG TYPE
@@ -41,29 +43,36 @@ if [[ -f /etc/icinga2/.nomount ]]; then
     NODENAME="$(cfg '.node.name')"
     [[ "${NODENAME}" != "null" ]] || NODENAME="$(hostname -f)"
 
+    if [[ ! -d "/var/lib/icinga2/certs" ]]; then
+        mkdir -p /var/lib/icinga2/certs
+        chown nagios:nagios /var/lib/icinga2/certs
+    fi
+
     if [[ ! -f "/var/lib/icinga2/certs/${NODENAME}.crt" ]]; then
         if [[ -n "${ICINGA_PKI:-}" ]]; then
             # register as agent/satellite
-            mkdir -p /var/lib/icinga2/certs
-
             if [[ -z "${ICINGA_CA_NODE:-}" ]]; then
-                ICINGA_CA_NODE="$(jq -r '.endpoints[0].host' /config/icinga2.json)"
-                ICINGA_CA_PORT="$(jq -r '.endpoints[0].port' /config/icinga2.json)"
+                ICINGA_CA_NODE="$(cfg '.ca.host')"
+                ICINGA_CA_PORT="$(cfg '.ca.port')"
 
                 if [[ "${ICINGA_CA_NODE}" == "null" ]]; then
-                    echo "Missing ICINGA_CA_NODE environment or .endpoints[0] for master"
+                    echo "Missing ICINGA_CA_NODE environment or .ca.(host|port) for master"
                     exit 1
                 fi
-                [[ "${ICINGA_CA_PORT}" != "null" ]] || ICINGA_CA_PORT="5665"
+            fi
+            if [[ -z "${ICINGA_CA_PORT}" || "${ICINGA_CA_PORT}" == "null" ]]; then
+                ICINGA_CA_PORT="5665"
             fi
 
             # generate self-signed certificate
+            echo "### GENERATING SELF-SIGNED CERTIFICATE ###"
             icinga2 pki new-cert --cn "${NODENAME}" \
                 --cert "/var/lib/icinga2/certs/${NODENAME}.crt" \
                 --csr "/var/lib/icinga2/certs/${NODENAME}.csr" \
                 --key "/var/lib/icinga2/certs/${NODENAME}.key"
 
             # receive trusted certificate from ca master
+            echo "### RECEIVE TRUSTED CERTIFICATE ###"
             icinga2 pki save-cert \
                 --host "${ICINGA_CA_NODE}" \
                 --port "${ICINGA_CA_PORT}" \
@@ -71,6 +80,7 @@ if [[ -f /etc/icinga2/.nomount ]]; then
                 --trustedcert "/var/lib/icinga2/certs/trusted-master.crt"
 
             # generate final certificate
+            echo "### REQUEST FINAL CERTIFICATE ###"
             icinga2 pki request \
                 --host "${ICINGA_CA_NODE}" \
                 --port "${ICINGA_CA_PORT}" \
@@ -81,15 +91,17 @@ if [[ -f /etc/icinga2/.nomount ]]; then
                 --ca "/var/lib/icinga2/certs/ca.crt"
         else
             # master setup
-            mkdir -p /var/lib/icinga2/certs
             if [[ ! -f /var/lib/icinga2/ca/ca.crt ]]; then
                 # create new ca
+                echo "### GENERATING NEW CA ###"
                 icinga2 pki new-ca
                 cp /var/lib/icinga2/ca/ca.crt /var/lib/icinga2/certs/ca.crt
             fi
+            echo "### GENERATING MASTER CERTIFICATE ###"
             icinga2 pki new-cert --cn "${NODENAME}" \
                 --csr "/var/lib/icinga2/certs/${NODENAME}.csr" \
                 --key "/var/lib/icinga2/certs/${NODENAME}.key"
+            echo "### SIGNING MASTER CERTIFICATE WITH CA ###"
             icinga2 pki sign-csr \
                 --csr "/var/lib/icinga2/certs/${NODENAME}.csr" \
                 --cert "/var/lib/icinga2/certs/${NODENAME}.crt"
@@ -97,6 +109,7 @@ if [[ -f /etc/icinga2/.nomount ]]; then
     fi
 
     ### validate
+    echo "### RUNNING SANITY CHECKS ON CERTIFICATES ###"
     # verify cn in cert
     icinga2 pki verify --cn "${NODENAME}" \
         --cert "/var/lib/icinga2/certs/${NODENAME}.crt"
