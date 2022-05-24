@@ -32,6 +32,24 @@ cfg() {
     esac
 }
 
+NAGIOS_UID="$(id -u nagios)"
+EFFECTIVE_UID="$(id -u)"
+ICINGADIR_UID="$(stat -c %u /var/lib/icinga2)"
+
+if [[ "${ICINGADIR_UID}" != "${NAGIOS_UID}" ]]; then
+    # icinga dir not owned by nagios, try changing it
+    if [[ "${EFFECTIVE_UID}" == "0" ]]; then
+        chown -R nagios:nagios /var/lib/icinga2
+    else
+        # we are not root and can't change owners
+        echo "#####################################################################"
+        echo "### Icinga dir owned by ${ICINGADIR_UID} instead of ${NAGIOS_UID} ###"
+        echo "### Entrypoint is not started as root, thus we can't change it    ###"
+        echo "### If you run into trouble, try fixing the permissions first     ###"
+        echo "#####################################################################"
+    fi
+fi
+
 if [[ -f /etc/icinga2/.nomount ]]; then
     get_type
 
