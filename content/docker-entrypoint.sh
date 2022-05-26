@@ -78,6 +78,24 @@ if [[ "${#APT_PACKAGES[@]}" -gt 0 ]]; then
     echo "### INSTALLATION DONE ###"
 fi
 
+readarray NAGIOS_GROUPS < <(cfg_array '.groups[]')
+if [[ "${#NAGIOS_GROUPS[@]}" -gt 0 ]]; then
+    echo "### ADDING NAGIOS USER TO GROUPS ###"
+    (
+        for grp in "${NAGIOS_GROUPS[@]}"; do
+            IFS=':' read -r grp_name grp_id < <(echo "${grp//\"/}")
+            sysgrp="$(getent group "${grp_id}")" || sysgrp=""
+            if [[ -z "${sysgrp}" ]]; then
+                sudo groupadd -g ${grp_id} "${grp_name}"
+            else
+                IFS=':' read -r grp_name grp_pw grp_id < <(echo "${sysgrp}")
+            fi
+            sudo gpasswd -a nagios ${grp_name}
+        done
+    ) | sed 's/^/> /'
+    echo "### DONE EDITING PERMISSIONS ###"
+fi
+
 if [[ -f /etc/icinga2/.nomount ]]; then
     if ! j2 /templates/icinga2.conf.j2 "${CONFIG}" >/etc/icinga2/icinga2.conf; then
         echo "Failed to create templated config"
