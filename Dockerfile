@@ -36,8 +36,9 @@ RUN set -eu \
  && apt-get install -qqy \
       icinga2=${APTVER} icinga2-ido-mysql=${APTVER} \
       monitoring-plugins monitoring-plugins-contrib monitoring-plugins-btrfs \
-      j2cli jq \
+      j2cli jq sudo \
  && cecho "### FINISH & CLEANUP ###" \
+ && echo "nagios ALL = (root:root) NOPASSWD: /usr/bin/apt-get update, /usr/bin/apt-get clean, /usr/bin/apt-get install *" >/etc/sudoers.d/nagios \
  && rm -rf /etc/icinga2/* && touch /etc/icinga2/.nomount \
  && mkdir /plugins /config && chown root:root /plugins /config && chmod 0755 /plugins /config \
  && mkdir /run/icinga2 && chown nagios:nagios /run/icinga2 \

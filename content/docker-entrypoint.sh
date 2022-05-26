@@ -3,7 +3,7 @@
 set -eu
 
 get_type() {
-    [[ -z "${CONFIG:-}" ]] || return
+    [[ -z "${CONFIG:-}" ]] || return 0
     declare -g CONFIG TYPE
     for cfg in yaml json; do
         if [[ -f "/config/icinga2.${cfg}" ]]; then
@@ -32,6 +32,21 @@ cfg() {
     esac
 }
 
+cfg_array() {
+    local option="$1"
+    get_type
+
+    case "${TYPE}" in
+        yaml) yq e -o=j -I=0 "${option}" "${CONFIG}" ;;
+        *)
+            echo "Unknown config type ${TYPE}" >&2
+            exit 1
+        ;;
+    esac
+}
+
+get_type
+
 NAGIOS_UID="$(id -u nagios)"
 EFFECTIVE_UID="$(id -u)"
 ICINGADIR_UID="$(stat -c %u /var/lib/icinga2)"
@@ -50,9 +65,20 @@ if [[ "${ICINGADIR_UID}" != "${NAGIOS_UID}" ]]; then
     fi
 fi
 
-if [[ -f /etc/icinga2/.nomount ]]; then
-    get_type
+readarray APT_PACKAGES < <(cfg_array '.packages.apt[]')
+if [[ "${#APT_PACKAGES[@]}" -gt 0 ]]; then
+    echo "### INSTALLING APT PACKAGES ###"
+    (
+        set -x
+        sudo apt-get update
+        # remove " from array content and remove newlines from output separating array values
+        sudo apt-get install -y $(echo -n "${APT_PACKAGES[@]//\"/}" | tr '\n' ' ')
+        sudo apt-get clean
+    ) | sed 's/^/> /'
+    echo "### INSTALLATION DONE ###"
+fi
 
+if [[ -f /etc/icinga2/.nomount ]]; then
     if ! j2 /templates/icinga2.conf.j2 "${CONFIG}" >/etc/icinga2/icinga2.conf; then
         echo "Failed to create templated config"
         exit 1
