@@ -1,6 +1,6 @@
 MAJOR	 ?= 2
 MINOR	 ?= 13
-PATCH	 ?= 3
+PATCH	 ?= 4
 REVISION ?= 1
 
 TAG	= ghcr.io/g0dscookie/icinga2
