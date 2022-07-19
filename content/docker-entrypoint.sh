@@ -181,8 +181,13 @@ if [[ -f /etc/icinga2/.nomount ]]; then
         --cacert "/var/lib/icinga2/certs/ca.crt"
 fi
 
+if [[ -f "/var/lib/icinga2/certs/ca.crt" ]]; then
+    cp -f "/var/lib/icinga2/certs/ca.crt" /usr/local/share/ca-certificates/icinga-ca.crt
+    sudo update-ca-certificates
+fi
+
 if [[ "${EFFECTIVE_UID}" == "0" ]]; then
     exec icinga2 daemon
 else
-    exec sudo su -s /bin/bash nagios -c "icinga2 daemon"
+    exec sudo /bin/su -s /bin/bash nagios -c "icinga2 daemon"
 fi

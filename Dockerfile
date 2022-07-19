@@ -4,7 +4,7 @@ ARG ICINGA2_VERSION
 ARG REVISION
 
 LABEL maintainer="g0dsCookie <g0dscookie@cookieprojects.de>" \
-      description="A fast and secure drop-in replacement for sendmail" \
+      description="The core of our monitoring platform with a powerful configuration language and REST API" \
       version="${ICINGA2_VERSION}"
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -43,10 +43,16 @@ RUN set -eu \
  && apt-get clean -qqy
 
 RUN set -eu \
+ && mkdir -p /usr/local/share/ca-certificates \
+ && chown nagios:nagios /usr/local/share/ca-certificates \
+ && chmod 0755 /usr/local/share/ca-certificates
+
+RUN set -eu \
  && usermod -s /bin/bash nagios \
  && echo "nagios ALL = (root:root) NOPASSWD: /usr/bin/apt-get update, /usr/bin/apt-get clean, /usr/bin/apt-get install *" >/etc/sudoers.d/nagios \
  && echo "nagios ALL = (root:root) NOPASSWD: /usr/sbin/groupadd *, /usr/bin/gpasswd *" >>/etc/sudoers.d/nagios \
- && echo "nagios ALL = (root:root) NOPASSWD: /bin/su *" >>/etc/sudoers.d/nagios \
+ && echo "nagios ALL = (root:root) NOPASSWD: /usr/sbin/update-ca-certificates" >>/etc/sudoers.d/nagios \
+ && echo "nagios ALL = (root:root) NOPASSWD: /bin/su -s /bin/bash nagios -c icinga2\ daemon" >>/etc/sudoers.d/nagios \
  && rm -rf /etc/icinga2/* && touch /etc/icinga2/.nomount \
  && mkdir /plugins /config && chown root:root /plugins /config && chmod 0755 /plugins /config \
  && mkdir /run/icinga2 && chown nagios:nagios /run/icinga2
